@@ -1,0 +1,73 @@
+from fabric.api import *
+import instances
+
+def hosts(group_names):
+    """ return a callable that generates a list of hostnames when evaluated. """
+    def _get_hosts():
+        as_groups = group_names
+        hosts = []
+        for group in as_groups:
+            nodes = instances.from_as_group(group)
+            hosts.extend(nodes)
+        return hosts
+    return _get_hosts
+
+env.roledefs = {
+    'openbadges-production': hosts(['openbadges-production-as']),
+    'openbadges-staging': hosts(['openbadges-staging-as']),
+    'source-staging': hosts(['source-staging-as']),
+    'source-production': hosts(['source-production-as']),
+    'csol-staging': hosts(['csol-staging-as']),
+    'csol-production': hosts(['csol-production-as']),
+    'login-staging': hosts(['login-staging-as']),
+    'login-production': hosts(['login-production-as']),
+    'thimble-staging': hosts(['thimble-staging-as']),
+    'thimble-production': hosts(['thimble-production-as']),
+    'makeapi-staging': hosts(['makeapi-staging-as']),
+    'makeapi-production': hosts(['makeapi-production-as']),
+    'node-hubble-staging': hosts(['node-hubble-staging-as']),
+    'node-hubble-production': hosts(['node-hubble-production-as']),
+    'webpagemaker-staging': hosts(['webpagemaker-staging-as']),
+    'webpagemaker-production': hosts(['webpagemaker-production-as']),
+    'webmakerorg-staging': hosts(['webmakerorg-staging-as']),
+    'webmakerorg-production': hosts(['webmakerorg-production-as']),
+    'butter-staging': hosts(['butter-staging-as']),
+    'butter-production': hosts(['butter-production-as']),
+    'openbadger-staging': hosts(['openbadger-wm-staging-as',
+                                     'openbadger-csol-staging-as',])
+}
+
+@task
+def restart_puppet():
+    sudo('cat /var/run/puppet/agent.pid | xargs kill -HUP')
+
+@task
+def health_check():
+    sudo('/usr/local/nagios/libexec/check_health')
+
+@task
+@parallel
+def kick():
+    restart_puppet()
+
+@task
+def rolling_kick():
+    restart_puppet()
+    wait(5)
+
+@task
+def update_geppetto():
+    sync_repo()
+    show_sync_logs()
+    restart_puppet()
+    wait(30)
+    restart_apache()
+
+@task
+def touch_uwsgi():
+    sudo('touch /etc/uwsgi/emperor/*.ini')
+
+@task
+def rolling_touch():
+    touch_uwsgi()
+    wait(10)

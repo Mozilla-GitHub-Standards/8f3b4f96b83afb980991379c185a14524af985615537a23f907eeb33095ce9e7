@@ -1,0 +1,60 @@
+#cloud-config for openbadger production 64bit
+preserve_hostname: true
+apt_update: true
+apt_upgrade: true
+apt_preserve_sources_list: false
+apt_mirror: http://us-east-1.ec2.archive.ubuntu.com.s3.amazonaws.com/ubuntu
+apt_sources:
+ - source: deb $MIRROR $RELEASE multiverse
+ - source: deb-src $MIRROR $RELEASE multiverse
+ - source: deb $MIRROR $RELEASE-updates multiverse
+ - source: deb-src $MIRROR $RELEASE-updates multiverse
+ - source: deb $MIRROR $RELEASE-backports main restricted universe multiverse
+ - source: deb-src $MIRROR $RELEASE-backports main restricted universe multiverse
+ - source: deb $MIRROR $RELEASE-security multiverse
+ - source: deb http://archive.canonical.com/ubuntu $RELEASE partner
+ - source: deb-src http://archive.canonical.com/ubuntu $RELEASE partner
+packages:
+ - git
+ - s3cmd
+mounts:
+ - [ ephemeral0 ]
+ - [ xvdb1, none, swap, sw ]
+ - [ LABEL=mofomnt, /mnt, ext4 ]
+bootcmd:
+ - ec2metadata --instance-id > /etc/hostname
+ - hostname -b -F /etc/hostname
+ - echo "127.0.1.1 `cat /etc/hostname`" >> /etc/hosts
+ - parted -s -a optimal /dev/xvdb mklabel gpt
+ - parted -s -a optimal /dev/xvdb mkpart primary linux-swap 2048s 4200447s
+ - mkswap /dev/xvdb1
+ - parted -s -a optimal /dev/xvdb mkpart primary 4200448s 880732126s
+ - mkfs.ext4 -L mofomnt /dev/xvdb2
+runcmd:
+ - if ec2metadata | grep instance-id > /dev/null; then ec2metadata --instance-id > /etc/hostname; echo 127.0.0.1 `cat /etc/hostname` >> /etc/hosts; hostname -b -F /etc/hostname; service rsyslog restart; fi
+ - [ sh, -c, "echo 'access_key = AKAISEKRETKEY\nsecret_key = blahblahblah' > /root/.s3cfg-creds" ]
+ - [ sh, -c, "echo 'Host geppetto.mofoprod.net\n  Port 22\n  IdentityFile /root/.ssh/id_rsa\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n  User ubuntu' >> /etc/ssh/ssh_config"]
+ - [ sh, -c, "chown root:root /root/.s3cfg-creds && chmod 600 /root/.s3cfg-creds" ]
+ - [ sh, -c, "locale-gen en_US.UTF-8" ]
+cloud_config_modules:
+ - bootcmd
+ - mounts
+ - [ apt-update-upgrade, always ]
+ - ssh
+ - runcmd
+ - puppet
+resize_rootfs: True
+timezone: GMT
+locale: en_US.UTF-8
+puppet:
+ conf:
+   agent:
+    factpath: "$vardir/lib/puppet/facter"
+    node_name: "cert"
+    certname: "openbadger-csol-zrll-%i"
+    server: "geppetto.mofoprod.net"
+   main:
+    vardir: "/var/lib/puppet"
+    logdir: "/var/log/puppet"
+    rundir: "/var/run/puppet"
+    ssldir: "/var/lib/puppet/ssl"
